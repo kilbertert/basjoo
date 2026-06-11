@@ -9,9 +9,9 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 # gettext 当前仅提供这些后台/认证翻译目录
-SUPPORTED_LOCALES = ['zh-CN', 'en-US']
+SUPPORTED_LOCALES = ['zh-CN', 'en-US', 'vi-VN']
 DEFAULT_LOCALE = 'zh-CN'
-RUNTIME_FALLBACK_LOCALES = ('en-US', 'zh-CN')
+RUNTIME_FALLBACK_LOCALES = ('en-US', 'zh-CN', 'vi-VN')
 
 # 翻译文件路径
 LOCALES_DIR = Path(__file__).parent / 'locales'
@@ -27,6 +27,7 @@ _LOCALE_ALIAS_MAP = {
     'ja': 'ja-JP',
     'de': 'de-DE',
     'es': 'es-ES',
+    'vi': 'vi-VN',
     'zh-hans': 'zh-CN',
     'zh-cn': 'zh-CN',
     'zh-sg': 'zh-CN',

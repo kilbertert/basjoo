@@ -105,11 +105,41 @@ from services.kb_service import KbService
 from middleware import get_request_client_ip
 from api.v1.sse_utils import sse_event
 from config import settings
+from i18n.core import normalize_locale
 import os
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1")
+
+
+# Map of normalised widget locale -> LLM-facing response directive. The widget
+# language selector is a chat-time override (D9/D12 in the requirements doc) and
+# is independent from the admin-side Accept-Language / i18n locale. The default
+# zh-CN is intentionally absent so the existing system prompt is left untouched
+# when the selector is unset or matches the default.
+WIDGET_LOCALE_RESPONSE_INSTRUCTIONS: dict[str, str] = {
+    "en-US": "IMPORTANT: Always respond in English (en-US).",
+    "vi-VN": "IMPORTANT: Always respond in Tiếng Việt (vi-VN).",
+}
+
+
+def widget_locale_response_instruction(widget_locale: Optional[str]) -> str:
+    """Return the system-prompt suffix that pins the assistant's reply language.
+
+    Returns an empty string for the default locale, missing/blank input, and any
+    unrecognised value. The suffix is prefixed with a blank line so it visually
+    separates from the agent's persona prompt and the KB context block above.
+    """
+    if not widget_locale:
+        return ""
+    normalised = normalize_locale(widget_locale)
+    if not normalised:
+        return ""
+    directive = WIDGET_LOCALE_RESPONSE_INSTRUCTIONS.get(normalised)
+    if not directive:
+        return ""
+    return f"\n\n{directive}"
 
 # 预设人设提示词（仅在后端保存，前端不可见）
 PERSONA_PRESETS = {
@@ -912,7 +942,7 @@ async def prepare_chat_request(
     system_content = agent_system_prompt or "You are a helpful AI assistant."
     if kb_context:
         system_content += (
-            f"\n\n以下是相关背景资料：\n\n{kb_context}\n\n请基于以上资料回答用户问题。"
+            f"\n\n以下是相关背景资料：\n{kb_context}\n\n请基于以上资料回答用户问题。"
             "\n\n引用说明：回答时请使用 [标题](#source-N) 格式引用来源，其中N为来源序号。"
             "例如：根据 [Petking官网](#source-1)，我们的产品..."
         )
@@ -921,6 +951,13 @@ async def prepare_chat_request(
             "\n\n[No relevant information found in the knowledge base. "
             "Please use a fallback response according to your role constraints.]"
         )
+
+    # Widget-side language selector override: independent from admin locale (D12).
+    # Pin the assistant's reply language so a Vietnamese visitor selecting vi-VN
+    # gets Vietnamese replies even when typing in Chinese, etc.
+    system_content += widget_locale_response_instruction(
+        getattr(request, "widget_locale", None)
+    )
 
     messages.append({"role": "system", "content": system_content})
     if agent_enable_context and conversation_history:

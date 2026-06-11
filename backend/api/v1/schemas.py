@@ -37,6 +37,15 @@ class ChatRequest(BaseModel):
         description="用户消息（限制1000字符防止内存耗尽攻击）",
     )
     locale: Optional[str] = Field(None, description="语言")
+    widget_locale: Optional[str] = Field(
+        None,
+        max_length=10,
+        description=(
+            "Widget 端访客选择的 UI 语言代码(例:vi-VN/en-US/zh-CN),"
+            "与 Accept-Language 解出的 admin 后台 locale 相互独立;"
+            "用于在 system prompt 中注入语言指令,强制 AI 用该语种回复。"
+        ),
+    )
     session_id: Optional[str] = Field(
         None, max_length=200, description="会话ID（用于多轮对话）"
     )

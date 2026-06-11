@@ -1,0 +1,73 @@
+# Vietnamese (Vietnam) translations
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: vi_VN\n"
+
+# 认证相关
+msgid "Invalid credentials"
+msgstr "Thông tin đăng nhập không hợp lệ, vui lòng kiểm tra email và mật khẩu"
+
+msgid "Not logged in"
+msgstr "Chưa đăng nhập, vui lòng đăng nhập trước"
+
+msgid "Session expired, please log in again"
+msgstr "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại"
+
+msgid "User not found"
+msgstr "Không tìm thấy người dùng"
+
+msgid "Account has been deactivated"
+msgstr "Tài khoản đã bị vô hiệu hóa"
+
+msgid "No account found with this email"
+msgstr "Không tìm thấy tài khoản nào với email này"
+
+msgid "Incorrect password"
+msgstr "Mật khẩu không chính xác"
+
+msgid "Email already registered"
+msgstr "Email đã được đăng ký"
+
+msgid "Password too short"
+msgstr "Mật khẩu phải có ít nhất 8 ký tự"
+
+msgid "System already has an administrator"
+msgstr "Hệ thống đã có quản trị viên, vui lòng liên hệ quản trị viên hiện tại để quản lý tài khoản"
+
+# API 错误
+msgid "Agent not found"
+msgstr "Không tìm thấy Agent được chỉ định"
+
+msgid "Daily message quota exceeded"
+msgstr "Đã hết hạn mức tin nhắn trong ngày, vui lòng thử lại vào ngày mai"
+
+msgid "URL fetching failed"
+msgstr "Lấy URL thất bại"
+
+msgid "Index rebuild failed"
+msgstr "Xây dựng lại chỉ mục thất bại"
+
+# API 响应
+msgid "Operation successful"
+msgstr "Thao tác thành công"
+
+msgid "URL added successfully"
+msgstr "Đã thêm URL thành công"
+
+msgid "QA item imported successfully"
+msgstr "Đã nhập mục Hỏi & Đáp thành công"
+
+msgid "Q&A item updated successfully"
+msgstr "Đã cập nhật mục Hỏi & Đáp thành công"
+
+msgid "Q&A item deleted successfully"
+msgstr "Đã xóa mục Hỏi & Đáp thành công"
+
+# 认证相关
+msgid "Too many login attempts. Please try again later."
+msgstr "Quá nhiều lần đăng nhập thất bại. Vui lòng thử lại sau."
+
+# 系统消息
+msgid "Request body too large"
+msgstr "Kích thước yêu cầu quá lớn"
