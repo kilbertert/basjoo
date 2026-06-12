@@ -3,6 +3,15 @@
  * 可嵌入的智能聊天组件
  */
 
+import {
+  DEFAULT_LOCALE,
+  SUPPORTED_LOCALES,
+  WIDGET_LOCALE_STORAGE_KEY,
+  WidgetLocale,
+  isWidgetLocale,
+  t,
+} from './locales';
+
 interface WidgetConfig {
   agentId: string;
   apiBase?: string;
@@ -125,6 +134,9 @@ const AUTO_INIT_SCRIPT_PARAM_MAP = {
   language: ['language', 'locale'],
   position: ['position'],
   theme: ['theme'],
+  // PR12: explicit widget-locale preset on the script tag, written straight to
+  // localStorage by the bootstrap so the first paint shows the right option.
+  widgetLocale: ['widget_locale', 'widgetLocale'],
 } as const
 
 function buildDefaultLogoUrl(apiBase: string): string {
@@ -232,6 +244,9 @@ class BasjooWidget {
   private _closeBtnClickListener: (() => void) | null = null;
   private _sendBtnClickListener: (() => void) | null = null;
   private _inputKeypressListener: ((e: KeyboardEvent) => void) | null = null;
+  // PR12: visitor's chosen widget language (independent from admin's basjoo_locale).
+  private widgetLocale: WidgetLocale = DEFAULT_LOCALE;
+  private _localeChangeListener: (() => void) | null = null;
 
   constructor(config: WidgetConfig) {
     const apiBase = this.detectApiBase(config.apiBase);
@@ -256,6 +271,14 @@ class BasjooWidget {
     this.visitorId = this.storage.getItem(this.VISITOR_STORAGE_KEY) || this.generateVisitorId();
 
     this.effectiveTheme = this.getEffectiveTheme();
+
+    // PR12: restore the visitor's language choice from localStorage. StorageAdapter
+    // falls back to in-memory storage on localStorage denial (cross-origin /
+    // sandboxed embeds), so this works even when localStorage is blocked.
+    const storedWidgetLocale = this.storage.getItem(WIDGET_LOCALE_STORAGE_KEY);
+    this.widgetLocale = isWidgetLocale(storedWidgetLocale)
+      ? storedWidgetLocale
+      : DEFAULT_LOCALE;
   }
 
   private generateVisitorId(): string {
@@ -976,6 +999,58 @@ class BasjooWidget {
         }
       }
 
+      /* PR12: language selector (header) */
+      .basjoo-sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      .basjoo-language-selector-wrap {
+        display: inline-flex;
+        align-items: center;
+        margin: 0 8px;
+        flex-shrink: 0;
+      }
+      .basjoo-language-selector {
+        appearance: none;
+        -webkit-appearance: none;
+        background-color: rgba(255, 255, 255, 0.15);
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='white' stroke-width='1.5'><polyline points='3,5 6,8 9,5'/></svg>");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+        background-size: 10px 10px;
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 6px;
+        padding: 4px 24px 4px 10px;
+        font-size: 12px;
+        font-weight: 500;
+        font-family: inherit;
+        line-height: 1.4;
+        cursor: pointer;
+        outline: none;
+        transition: background-color 0.2s, border-color 0.2s;
+      }
+      .basjoo-language-selector:hover {
+        background-color: rgba(255, 255, 255, 0.25);
+        border-color: rgba(255, 255, 255, 0.35);
+      }
+      .basjoo-language-selector:focus-visible {
+        background-color: rgba(255, 255, 255, 0.25);
+        border-color: rgba(255, 255, 255, 0.6);
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
+      }
+      .basjoo-language-selector option {
+        background: ${bgColor};
+        color: ${textColor};
+      }
+
       @media (max-width: 480px) {
         #basjoo-chat-window {
           width: calc(100vw - 32px);
@@ -1139,6 +1214,38 @@ class BasjooWidget {
     };
     input.addEventListener('keypress', this._inputKeypressListener);
 
+    // PR12: language selector — sits in the header, between title and close (D15).
+    const header = this.chatWindow.querySelector('.basjoo-header') as HTMLElement;
+    const closeBtnForLocale = header.querySelector('.basjoo-close') as HTMLElement;
+
+    const localeSelect = document.createElement('select');
+    localeSelect.className = 'basjoo-language-selector';
+    localeSelect.setAttribute('data-basjoo-locale-select', '');
+    localeSelect.setAttribute('aria-label', t(this.widgetLocale, 'languageSelectorLabel'));
+    for (const code of SUPPORTED_LOCALES) {
+      const opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = t(
+        this.widgetLocale,
+        code === 'zh-CN' ? 'optionZh' : code === 'en-US' ? 'optionEn' : 'optionVi'
+      );
+      if (code === this.widgetLocale) {
+        opt.selected = true;
+      }
+      localeSelect.appendChild(opt);
+    }
+    this._localeChangeListener = () => this.setWidgetLocale(localeSelect.value);
+    localeSelect.addEventListener('change', this._localeChangeListener);
+
+    const localeWrap = document.createElement('label');
+    localeWrap.className = 'basjoo-language-selector-wrap';
+    const srOnly = document.createElement('span');
+    srOnly.className = 'basjoo-sr-only';
+    srOnly.textContent = t(this.widgetLocale, 'languageSelectorLabel');
+    localeWrap.appendChild(srOnly);
+    localeWrap.appendChild(localeSelect);
+    header.insertBefore(localeWrap, closeBtnForLocale);
+
     this.container!.appendChild(this.chatWindow);
   }
 
@@ -1180,26 +1287,59 @@ class BasjooWidget {
   }
 
   /**
-   * Get localized text based on language setting
+   * Get localized text based on the visitor's widget language choice
+   * (PR12 — driven by `this.widgetLocale`, NOT by `getRequestLocale()` so the
+   * selector value wins over the auto-detected `config.language`).
    */
-  private getText(key: 'sendFailed' | 'networkError' | 'quotaExceeded' | 'takenOverNotice' | 'inputPlaceholder' | 'messageTooLong' | 'greetingBubble' | 'newMessage' | 'thinking' | 'references'): string {
-    const texts: Record<string, Record<string, string>> = {
-      sendFailed: { 'en-US': 'Send failed, please try again later', 'zh-CN': '发送失败，请稍后重试' },
-      networkError: { 'en-US': 'Network connection failed, please check your connection', 'zh-CN': '网络连接失败，请检查网络' },
-      quotaExceeded: { 'en-US': 'Daily message limit reached', 'zh-CN': '今日消息已达上限' },
-      takenOverNotice: { 'en-US': 'Your conversation has been transferred to a human agent. Please wait for their reply.', 'zh-CN': '已转接人工客服，请等待回复。' },
-      inputPlaceholder: { 'en-US': 'Type your question...', 'zh-CN': '输入您的问题...' },
-      messageTooLong: { 'en-US': 'Message too long (max 2000 characters)', 'zh-CN': '消息过长（最多2000字符）' },
-      greetingBubble: { 'en-US': 'Hi! How can I help you?', 'zh-CN': '你好！有什么可以帮您？' },
-      newMessage: { 'en-US': 'New message', 'zh-CN': '新消息' },
-      thinking: { 'en-US': 'Thinking...', 'zh-CN': '思考中...' },
-      references: { 'en-US': 'References', 'zh-CN': '参考来源' },
-    };
+  private getText(key: 'sendFailed' | 'networkError' | 'quotaExceeded' | 'takenOverNotice' | 'inputPlaceholder' | 'messageTooLong' | 'greetingBubble' | 'newMessage' | 'thinking' | 'references' | 'languageSelectorLabel' | 'optionZh' | 'optionEn' | 'optionVi'): string {
+    return t(this.widgetLocale, key)
+  }
 
-    const locale = this.getRequestLocale().toLowerCase()
-    return locale.startsWith('zh')
-      ? texts[key]['zh-CN'] || texts[key]['en-US'] || key
-      : texts[key]['en-US'] || texts[key]['zh-CN'] || key
+  /**
+   * PR12: set the visitor's widget language and persist to localStorage.
+   * Silently ignores unknown values; no-op when value matches the current one.
+   */
+  private setWidgetLocale(next: string): void {
+    if (!isWidgetLocale(next) || next === this.widgetLocale) {
+      return
+    }
+    this.widgetLocale = next
+    try {
+      this.storage.setItem(WIDGET_LOCALE_STORAGE_KEY, next)
+    } catch {
+      // StorageAdapter.setItem already handles denial; the try/catch is for the
+      // extremely unlikely case where even the in-memory map is unreachable.
+    }
+    this.applyWidgetLocale()
+  }
+
+  /**
+   * PR12: re-render widget UI strings that were captured at construction time
+   * (input placeholder, selector a11y label, greeting bubble text). Strings
+   * that are read live by `getText()` (e.g. thinking, error toasts) do not
+   * need manual re-rendering.
+   */
+  private applyWidgetLocale(): void {
+    if (!this.chatWindow) return
+    const input = this.chatWindow.querySelector('.basjoo-input') as HTMLInputElement | null
+    if (input) {
+      input.placeholder = t(this.widgetLocale, 'inputPlaceholder')
+    }
+    const select = this.chatWindow.querySelector('[data-basjoo-locale-select]') as HTMLSelectElement | null
+    if (select) {
+      select.setAttribute('aria-label', t(this.widgetLocale, 'languageSelectorLabel'))
+    }
+    const srOnly = this.chatWindow.querySelector(
+      '.basjoo-language-selector-wrap .basjoo-sr-only'
+    ) as HTMLElement | null
+    if (srOnly) {
+      srOnly.textContent = t(this.widgetLocale, 'languageSelectorLabel')
+    }
+    // Re-text the greeting bubble if it's still on screen (5-second auto-hide).
+    const bubble = document.querySelector('.basjoo-greeting-bubble') as HTMLElement | null
+    if (bubble) {
+      bubble.textContent = t(this.widgetLocale, 'greetingBubble')
+    }
   }
 
   /**
@@ -1805,6 +1945,7 @@ class BasjooWidget {
             agent_id: this.config.agentId,
             message,
             locale: this.getRequestLocale(),
+            widget_locale: this.widgetLocale,
             session_id: this.sessionId || undefined,
             visitor_id: this.visitorId,
             timezone: userTimezone,
@@ -1933,6 +2074,14 @@ class BasjooWidget {
     if (input && this._inputKeypressListener) {
       input.removeEventListener('keypress', this._inputKeypressListener);
     }
+    // PR12: drop the language-selector listener tracked separately.
+    const localeSelect = this.chatWindow?.querySelector(
+      '[data-basjoo-locale-select]'
+    ) as HTMLSelectElement | null;
+    if (localeSelect && this._localeChangeListener) {
+      localeSelect.removeEventListener('change', this._localeChangeListener);
+    }
+    this._localeChangeListener = null;
 
     this.container?.remove();
     const styles = document.getElementById('basjoo-widget-styles');
@@ -2050,6 +2199,22 @@ function getAutoInitConfig(script: HTMLScriptElement): WidgetConfig | null {
     return
   }
   globalWindow.__basjooWidgetAutoInitScheduled = true
+
+  // PR12: honor ?widget_locale=... on the script src by priming localStorage
+  // before the widget constructs, so the first paint shows the correct option
+  // (no flash). Unknown values are silently dropped.
+  try {
+    const presetRaw = getSearchParamValue(
+      new URL(script.src).searchParams,
+      AUTO_INIT_SCRIPT_PARAM_MAP.widgetLocale
+    )
+    if (presetRaw && isWidgetLocale(presetRaw)) {
+      window.localStorage.setItem(WIDGET_LOCALE_STORAGE_KEY, presetRaw)
+    }
+  } catch {
+    // localStorage may be denied (cross-origin / sandboxed); StorageAdapter
+    // will still keep an in-memory copy. No-op is fine.
+  }
 
   const start = () => {
     void new BasjooWidget(config).init()

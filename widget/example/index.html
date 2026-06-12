@@ -139,7 +139,8 @@
   </div>
 
   <!-- 加载并初始化Widget -->
-  <script src="basjoo-widget.js"></script>
+  <!-- PR12: 在 script src 后加 ?widget_locale=vi-VN 即可预选越语(首屏不闪) -->
+  <script src="basjoo-widget.js?agentId=agt_874abcf53314&apiBase=http%3A%2F%2Flocalhost%3A8001&widget_locale=vi-VN"></script>
   <script>
     new BasjooWidget({
       agentId: 'agt_874abcf53314',
