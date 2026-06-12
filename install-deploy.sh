@@ -1,7 +1,9 @@
 #!/bin/sh
 set -eu
 
-BASJOO_REPO_URL=${BASJOO_REPO_URL:-https://github.com/haoyiyin/basjoo}
+# Default fork for our deployment. Override with BASJOO_REPO_URL=... if you
+# want to pull from upstream or another fork. See docs/deploy-pzalo.md Step 2.
+BASJOO_REPO_URL=${BASJOO_REPO_URL:-https://github.com/kilbertert/basjoo}
 BASJOO_BRANCH=${BASJOO_BRANCH:-main}
 BASJOO_FORCE_CLEAN=${BASJOO_FORCE_CLEAN:-1}
 INSTALL_DOCKER_URL=${INSTALL_DOCKER_URL:-https://get.docker.com}

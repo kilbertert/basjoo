@@ -121,6 +121,7 @@ class Agent(Base):
             "openrouter",
             "zai",
             "deepseek",
+            "minimax",            # PR: MiniMax (OpenAI 兼容) https://api.minimaxi.com/v1
             "volcengine",
             "moonshot",
             "aliyun_bailian",

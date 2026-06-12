@@ -839,6 +839,16 @@ def get_llm_service(
             model=resolved_model or "deepseek-v4-flash",
         )
 
+    elif resolved_provider_type == "minimax":
+        # MiniMax (https://api.minimaxi.com/v1) 是 OpenAI 兼容接口,直接走
+        # OpenAIProvider;默认模型 MiniMax-Text-01(参见 docs/deploy-pzalo.md)。
+        logger.info("使用 MiniMax Provider (OpenAI Compatible)")
+        return OpenAIProvider(
+            api_key=resolved_api_key,
+            base_url=resolved_api_base or "https://api.minimaxi.com/v1",
+            model=resolved_model or "MiniMax-Text-01",
+        )
+
     elif resolved_provider_type == "volcengine":
         logger.info("使用 火山引擎 Provider (OpenAI Compatible)")
         return OpenAIProvider(

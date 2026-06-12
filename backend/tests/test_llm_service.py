@@ -1,9 +1,15 @@
 import sys
 import types
+from urllib.parse import urlparse
 
 import pytest
 
-from services.llm_service import GoogleProvider, OpenAINativeProvider, OpenAIProvider
+from services.llm_service import (
+    GoogleProvider,
+    OpenAINativeProvider,
+    OpenAIProvider,
+    get_llm_service,
+)
 
 
 class _FakeStreamResponse:
@@ -25,6 +31,8 @@ class _FakeChatCompletions:
 
 class _FakeAsyncOpenAI:
     def __init__(self, *args, **kwargs):
+        # Capture the base_url so tests can assert on the resolved URL.
+        self.base_url = kwargs.get("base_url")
         self.chat = types.SimpleNamespace(completions=_FakeChatCompletions())
 
 
@@ -168,6 +176,50 @@ async def test_openai_compatible_ignores_reasoning_content(monkeypatch):
         chunks.append(chunk)
 
     assert chunks == ["final answer"]
+
+
+def test_minimax_provider_dispatches_to_openai_with_minimax_base_url(monkeypatch):
+    """MiniMax 走 OpenAI 兼容接口;provider_type=minimax 时,工厂函数应返回
+    OpenAIProvider,base_url 落到 https://api.minimaxi.com/v1,默认 model
+    MiniMax-Text-01。
+    """
+    fake_openai_module = types.SimpleNamespace(AsyncOpenAI=_FakeAsyncOpenAI)
+    monkeypatch.setitem(sys.modules, "openai", fake_openai_module)
+
+    service = get_llm_service(
+        use_mock=False,
+        api_key="sk-cp-test",
+        provider_type="minimax",
+    )
+
+    assert isinstance(service, OpenAIProvider)
+    # 客户端是 AsyncOpenAI 实例,base_url 应已注入
+    parsed = urlparse(service.client.base_url)
+    assert parsed.hostname == "api.minimaxi.com"
+    assert parsed.path.rstrip("/") == "/v1"
+    # 默认 model
+    assert service.model == "MiniMax-Text-01"
+
+
+def test_minimax_provider_respects_explicit_base_url_and_model(monkeypatch):
+    """调用方显式传 api_base / model 时,工厂函数不应覆盖。
+    """
+    fake_openai_module = types.SimpleNamespace(AsyncOpenAI=_FakeAsyncOpenAI)
+    monkeypatch.setitem(sys.modules, "openai", fake_openai_module)
+
+    service = get_llm_service(
+        use_mock=False,
+        api_key="sk-cp-test",
+        provider_type="minimax",
+        api_base="https://custom.example.com/v2",
+        model="abab6.5s-chat",
+    )
+
+    assert isinstance(service, OpenAIProvider)
+    parsed = urlparse(service.client.base_url)
+    assert parsed.hostname == "custom.example.com"
+    assert parsed.path.rstrip("/") == "/v2"
+    assert service.model == "abab6.5s-chat"
 
 
 @pytest.mark.asyncio
