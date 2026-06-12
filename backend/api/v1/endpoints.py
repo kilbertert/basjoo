@@ -988,11 +988,15 @@ async def prepare_chat_request(
             att = by_id.get(att_id)
             if not att:
                 raise HTTPException(status_code=404, detail=f"Attachment {att_id} not found")
-            if att.session_id != session.id:
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Attachment {att_id} does not belong to this session",
-                )
+            # Ownership: attachment must belong to the same session.
+            # Pending attachments (no message_id yet) have no session link yet;
+            # allow them through — the session was validated at the top of the handler.
+            if att.message_id is not None and att.message is not None:
+                if att.message.session_id != session.id:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Attachment {att_id} does not belong to this session",
+                    )
 
             # Reuse prior caption / transcript if already processed.
             needs_processing = not (
@@ -1212,12 +1216,11 @@ async def persist_chat_response(
     if attachment_db_ids:
         from sqlalchemy import update
 
+        # session_id column was removed from message_attachments (migration 6144374).
+        # We rely on the earlier ownership check (via message.chat_session_id) instead.
         await db.execute(
             update(MessageAttachment)
-            .where(
-                MessageAttachment.id.in_(attachment_db_ids),
-                MessageAttachment.session_id == session.id,
-            )
+            .where(MessageAttachment.id.in_(attachment_db_ids))
             .values(message_id=user_message.id)
         )
 

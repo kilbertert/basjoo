@@ -174,13 +174,14 @@ async def upload_chat_attachment(
     sha = hashlib.sha256(blob).hexdigest()
     storage_key = MediaStorage().put(sha, blob)
 
-    # Dedup within the same session: if the same sha was uploaded before,
-    # return the existing row instead of inserting a duplicate.
+    # Dedup: same sha256 uploaded to the same agent → return existing row.
+    # (session_id column was removed from DB in migration 6144374;
+    # dedup is per-agent rather than per-session to avoid the missing column.)
     existing = (
         await db.execute(
             select(MessageAttachment)
             .where(
-                MessageAttachment.session_id == session.id,
+                MessageAttachment.agent_id == agent_row.id,
                 MessageAttachment.sha256 == sha,
             )
             .order_by(MessageAttachment.created_at.desc())
@@ -192,13 +193,13 @@ async def upload_chat_attachment(
     att = MessageAttachment(
         id=f"att_{uuid.uuid4().hex[:12]}",
         agent_id=agent_row.id,
-        session_id=session.id,
         kind=kind,
         mime_type=(file.content_type or "").split(";", 1)[0].strip().lower(),
         filename=file.filename or "upload",
         size_bytes=len(blob),
         storage_key=storage_key,
         sha256=sha,
+        storage_backend="local",  # DB column NOT NULL, default 'local'
         duration_ms=duration_ms,
         status="pending",
     )
@@ -207,7 +208,8 @@ async def upload_chat_attachment(
     await db.refresh(att)
     logger.info(
         "attachment upload id=%s kind=%s size=%d agent=%s session=%s",
-        att.id, att.kind, att.size_bytes, att.agent_id, att.session_id,
+        att.id, att.kind, att.size_bytes, att.agent_id,
+        session.id if hasattr(session, 'id') else session_id,
     )
     return {"attachment": _to_response_dict(att)}
 

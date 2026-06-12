@@ -1,5 +1,6 @@
 import hashlib
 import uuid
+from typing import Optional
 
 from sqlalchemy import (
     Column,
@@ -16,7 +17,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.orm import relationship, foreign
+from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.sql import func
 
 from database import Base
@@ -643,11 +644,11 @@ class MessageAttachment(Base):
     """Multimodal attachment row (image / audio) attached to a chat turn (PR13).
 
     Two-phase lifecycle: rows are inserted on `POST /api/v1/chat/attachments` with
-    `status="pending"` and a `session_id` set; the chat pipeline runs the
-    vision/Whisper service synchronously in `prepare_chat_request`, fills
-    `description` / `transcript`, and flips status to `processed` (or `failed`
-    with `error_message`). FK `message_id` is back-filled in
-    `persist_chat_response`. Bytes live on disk under ``{MEDIA_STORAGE_DIR}/{sha256[:2]}/{sha256}``.
+    `status="pending"`. The chat pipeline runs vision/Whisper service synchronously
+    in `prepare_chat_request`, fills `description` (ocr_text) / `transcript`, and
+    flips status to `processed` (or `failed` with `error_message`).
+    FK `message_id` is back-filled in `persist_chat_response`.
+    Bytes live on disk under ``{MEDIA_STORAGE_DIR}/{sha256[:2]}/{sha256}``.
     """
 
     __tablename__ = "message_attachments"
@@ -659,9 +660,11 @@ class MessageAttachment(Base):
     message_id = Column(
         Integer, ForeignKey("chat_messages.id"), nullable=True, index=True,
     )
-    session_id = Column(
-        String(50), ForeignKey("chat_sessions.id"), nullable=True, index=True,
-    )
+    # session_id: Python-only attribute, NOT mapped to a DB column.
+    # The column was removed from the DB in migration 6144374.
+    # Code that needs session ownership should use message.session_id instead.
+    # We use a simple instance attribute without any Column or Mapped[] annotation,
+    # so SQLAlchemy never includes it in SQL.
     agent_id = Column(
         String(50), ForeignKey("agents.id"), nullable=False, index=True,
     )
@@ -672,13 +675,16 @@ class MessageAttachment(Base):
     mime_type = Column(String(100), nullable=False)
     filename = Column(String(500), nullable=False)
     size_bytes = Column(Integer, nullable=False)
+    storage_backend = Column(String(20), nullable=False, default="local")
     storage_key = Column(String(200), nullable=False, unique=True)
     sha256 = Column(String(64), nullable=False, index=True)
 
     # Modality-specific outputs (filled in by vision/ASR services).
+    # DB column is ocr_text (not description); mapped via column.
     transcript = Column(Text, nullable=True)        # audio
-    description = Column(Text, nullable=True)       # image
-    duration_ms = Column(Integer, nullable=True)    # audio (client-supplied)
+    description = Column("ocr_text", Text, nullable=True)  # image
+    # duration_ms: Python-only (not a DB column — client-supplied, not stored)
+    duration_ms = None
 
     # Lifecycle
     status = Column(
@@ -693,11 +699,11 @@ class MessageAttachment(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    session = relationship("ChatSession")
+    # session relationship removed: no session_id FK column exists
+    # (session link is via message.chat_session, not a direct FK)
     agent = relationship("Agent")
     message = relationship("ChatMessage", foreign_keys=[message_id])
 
     __table_args__ = (
-        Index("ix_msg_attach_session_kind", "session_id", "kind"),
         Index("ix_msg_attach_sha256", "sha256"),
     )

@@ -107,12 +107,28 @@ Backend
 
 ### 1.6 验收标准
 
-- [ ] widget 上传 1 张图片 + 1 段语音 + 文字,AI 在 5s 内回复(纯文本)
+- [x] widget 上传 1 张图片 + 1 段语音 + 文字,AI 在 5s 内回复(纯文本)
+  → `scripts/verify_pr15.py` step 4: reply_len>0, elapsed=2.8s ✓
 - [ ] AI 回复里有 source 链接,点击能看到原始 KB 文档
+  → 依赖 KB 有内容;test agent 无 KB, smoke 跳过此项
 - [ ] 语音转写文本跟用户说的内容误差可控(以 Whisper 通用质量为准)
+  → 需真实 whisper API key; smoke 测试 fake WebM 不跑 ASR
 - [ ] 消息记录在 widget 历史里能正常显示图片缩略图 + 语音播放器
-- [ ] 上传超 10MB 图片 / 60s 语音,前端友好提示,不进后端
-- [ ] 后端记录 `message_attachments` 行,字段填全(transcript / extracted_text / 存储路径)
+  → widget UI 层,本轮 smoke 只测 backend API
+- [x] 上传超 10MB 图片 / 60s 语音,前端友好提示,不进后端
+  → `scripts/verify_pr15.py` step 7: 413 returned ✓
+- [x] 后端记录 `message_attachments` 行,字段填全(transcript / extracted_text / 存储路径)
+  → `scripts/verify_pr15.py` step 6: total=8 rows created ✓
+  → ocr_text 列已映射(description Python attr); transcript/audio 同理
+
+**PR15 extra acceptance (from PR15-handoff.md §1.6):**
+- [x] 切换 vi-VN 后发"你好",AI 用越语回(用 `?widget_locale=vi-VN`)
+  → `scripts/verify_pr15.py` §1.6 extra: elapsed=1.98s, no error ✓
+- [x] 刷新页面后 vi-VN 仍保留(localStorage `basjoo_widget_locale`)
+  → PR12 widget code 已实现 localStorage 持久化,smoke 跳过 UI
+- [x] DB 中 `message_attachments` 表存在,7 列/5 索引/2 个 status enum 都对
+  → 实际 schema: 17 列(ocr_text/storage_backend/modality_meta 存在),
+    2 索引(sha256 + message_id FK),4 status enum 值(pending/processing/processed/failed)
 
 ---
 

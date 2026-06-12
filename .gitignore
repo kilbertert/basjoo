@@ -128,6 +128,7 @@ temp/
 !/docs/requirements-second-pass.md
 !/docs/operations.md
 !/docs/deploy-pzalo.md
+!/docs/multimodal-quickref.md
 
 # Local AI/code intelligence caches
 .pi-lens/cache/

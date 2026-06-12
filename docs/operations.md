@@ -169,6 +169,82 @@ docker exec basjoo-backend-dev curl -s -H "Authorization: Bearer $(docker exec b
 curl -s -o /dev/null -w "widget-demo: %{http_code}\n" localhost:8000/widget-demo # 200
 ```
 
+### 4.6 多模态 widget 自测（PR11–14）
+
+需要 vision/ASR API key 才完整通过；不依赖 key 的部分（上传 / schema / DB）直接测。
+
+```bash
+# 0. 确认 stack 健康
+curl -s http://localhost:8000/health   # → {"status":"healthy"}
+
+# 1. Python 端到端 smoke（完整覆盖，见 scripts/verify_pr15.py）
+# 需要先安装 httpx: pip install httpx
+python scripts/verify_pr15.py
+# 期望 10/10 全绿（vision/ASR 未配时 done.attachments=[] 但流程继续）
+
+# 2. 手动 curl 上传测试（无 Python）
+# 2a. 上传 1×1 PNG image
+curl -s -X POST http://localhost:8000/api/v1/chat/attachments \
+  -H "Origin: http://localhost:8000" \
+  -F "file=@/tmp/test.png;type=image/png" \
+  -F "agent_id=$(docker exec basjoo-backend-dev python3 -c \"import sqlite3 as s; c=s.connect('/app/data/basjoo.db'); print(c.execute('SELECT id FROM agents WHERE is_active=1 LIMIT 1').fetchone()[0])\")" \
+  -F "session_id=test-sess" \
+  -F "visitor_id=test-vis" | python3 -m json.tool
+# → {"attachment": {"id": "att_...", "kind": "image", "status": "pending"}}
+
+# 2b. 上传 fake WebM audio（30s, multipart/form-data）
+# MediaRecorder 在 CLI 不可用，用 raw bytes 模拟上传路径
+curl -s -X POST http://localhost:8000/api/v1/chat/attachments \
+  -H "Origin: http://localhost:8000" \
+  -F "file=@/tmp/test.webm;type=audio/webm" \
+  -F "agent_id=..." \
+  -F "session_id=test-sess" \
+  -F "visitor_id=test-vis" \
+  -F "duration_ms=30000" | python3 -m json.tool
+# → {"attachment": {"id": "att_...", "kind": "audio", "status": "pending"}}
+
+# 2c. 负面测试：超 5MB → 413
+curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/v1/chat/attachments \
+  -H "Origin: http://localhost:8000" \
+  -F "file=@/tmp/oversized.png;type=image/png" \
+  -F "agent_id=..." -F "session_id=sess" -F "visitor_id=vis"
+# → 413
+
+# 2d. 负面测试：text/plain → 415
+curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/v1/chat/attachments \
+  -H "Origin: http://localhost:8000" \
+  -F "file=@/tmp/test.txt;type=text/plain" \
+  -F "agent_id=..." -F "session_id=sess" -F "visitor_id=vis"
+# → 415
+
+# 3. DB sanity: 查 message_attachments 表
+docker cp basjoo-backend-dev:/app/data/basjoo.db /tmp/basjoo.db
+sqlite3 /tmp/basjoo.db "SELECT id, kind, status, length(transcript), length(ocr_text) FROM message_attachments LIMIT 5;"
+# 注意：DB schema 列名是 ocr_text（image description），不是 description
+# status=pending → 上传成功但未处理；status=processed → vision/ASR 已跑过
+
+# 4. SSE stream 手动测试（带 attachment_ids）
+AGENT_ID=$(docker exec basjoo-backend-dev python3 -c "import sqlite3 as s; c=s.connect('/app/data/basjoo.db'); print(c.execute('SELECT id FROM agents WHERE is_active=1 LIMIT 1').fetchone()[0])")
+curl -N -s -X POST http://localhost:8000/api/v1/chat/stream \
+  -H "Content-Type: application/json" \
+  -H "Origin: http://localhost:8000" \
+  -d "{\"agent_id\":\"$AGENT_ID\",\"message\":\"Hello\",\"session_id\":\"test\",\"visitor_id\":\"vis\",\"attachment_ids\":[]}" \
+  | python3 -c "import sys,json; lines=[l for l in sys.stdin if l.strip()]; print(lines[-1] if lines else '')"
+# 期待 event: done → reply 非空
+
+# 5. vi-VN locale 测试
+curl -N -s -X POST http://localhost:8000/api/v1/chat/stream \
+  -H "Content-Type: application/json" \
+  -H "Origin: http://localhost:8000" \
+  -d "{\"agent_id\":\"$AGENT_ID\",\"message\":\"Xin chào\",\"session_id\":\"vi-test\",\"visitor_id\":\"vi-vis\",\"widget_locale\":\"vi-VN\"}" \
+  | grep -o '"content":"[^"]*"' | tail -1
+```
+
+> **注意**：`message_attachments` 表的实际 schema 列名是 `ocr_text`（image 描述）而非 `description`；
+> `session_id` 列不存在于当前 schema（migration 6144374 移除）；
+> `storage_backend` 列为 `local`。
+> 详情见 `docs/multimodal-quickref.md`。
+
 ---
 
 ## 5. 数据与状态
