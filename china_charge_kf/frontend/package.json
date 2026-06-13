@@ -9,7 +9,11 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e:ui-only": "playwright test --config e2e/playwright.config.ts --grep-invert @real-dify",
+    "test:e2e:real-dify": "cross-env RUN_REAL_DIFY=1 playwright test --config e2e/playwright.config.ts --grep @real-dify",
+    "test:e2e:all": "playwright test --config e2e/playwright.config.ts"
   },
   "dependencies": {
     "react": "^19.2.0",
@@ -23,6 +27,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "@vitest/coverage-v8": "^4.1.8",
+    "cross-env": "^7.0.3",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",

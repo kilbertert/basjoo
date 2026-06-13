@@ -31,3 +31,9 @@ dist-ssr
 
 # Playwright MCP transient output (snapshots, console logs)
 /.playwright-mcp/
+
+# M8.0 Playwright spec runner outputs (HTML report / junit.xml / test-results)
+# Paths are relative to the playwright.config.ts location (frontend/e2e/)
+/e2e/e2e-results/
+/e2e/playwright-report/
+/e2e/test-results/
